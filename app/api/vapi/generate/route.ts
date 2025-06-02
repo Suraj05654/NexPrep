@@ -78,12 +78,25 @@ export async function POST(request: Request) {
     // Generate questions using AI
     let text;
     try {
+      // Debug: Log environment variable
+      console.log('API Key available:', !!process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+      console.log('API Key length:', process.env.GOOGLE_GENERATIVE_AI_API_KEY?.length);
+
       console.log('Starting AI generation with params:', {
         role, level, type: normalizedType, techstack, amount
       });
 
-      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY || '');
+      // Initialize AI
+      const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+      if (!apiKey) {
+        throw new Error('Google AI API key is not configured');
+      }
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      console.log('AI client initialized');
+
       const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      console.log('Model selected');
 
       const prompt = `You are a technical interviewer. Create ${amount} interview questions.
         Role: ${role}
@@ -101,9 +114,15 @@ export async function POST(request: Request) {
         Example format: ["What is your experience with React?", "Explain component lifecycle"]
       `;
 
+      console.log('Sending prompt to AI...');
       const result = await model.generateContent(prompt);
+      console.log('Got result from AI');
+
       const response = await result.response;
+      console.log('Got response from result');
+
       text = response.text();
+      console.log('Extracted text from response');
 
       if (!text) {
         throw new Error('Empty response from AI');
@@ -114,13 +133,19 @@ export async function POST(request: Request) {
       console.error("AI Generation Error:", {
         name: error.name,
         message: error.message,
-        stack: error.stack
+        stack: error.stack,
+        cause: error.cause,
+        code: error.code,
+        details: error.details,
+        response: error.response,
       });
       return Response.json(
         { 
           success: false, 
           error: "Failed to generate questions", 
-          details: process.env.NODE_ENV === 'development' ? error.message : undefined 
+          details: error.message,  // Always show error message for debugging
+          code: error.code,
+          name: error.name
         },
         { status: 500 }
       );
