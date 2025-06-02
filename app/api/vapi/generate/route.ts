@@ -1,5 +1,4 @@
-import { generateText } from "ai";
-import { google } from "@ai-sdk/google";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 import { db } from "@/firebase/admin";
 import { getRandomInterviewCover } from "@/lib/utils";
@@ -79,24 +78,50 @@ export async function POST(request: Request) {
     // Generate questions using AI
     let text;
     try {
-      const response = await generateText({
-        model: google("gemini-2.0-flash-001"),
-        prompt: `Prepare ${amount} questions for a ${level} ${role} job interview.
-          Focus on ${normalizedType} questions.
-          Technical stack: ${techstack}.
-          Format: Return ONLY a JSON array of strings containing the questions.
-          Example format: ["Question 1", "Question 2"]
-          Rules:
-          - No special characters like / or *
-          - Questions should be clear and concise
-          - Return exactly ${amount} questions
-        `,
+      console.log('Starting AI generation with params:', {
+        role, level, type: normalizedType, techstack, amount
       });
-      text = response.text;
-    } catch (err) {
-      console.error("AI Generation Error:", err);
+
+      const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY || '');
+      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+
+      const prompt = `You are a technical interviewer. Create ${amount} interview questions.
+        Role: ${role}
+        Level: ${level}
+        Type: ${normalizedType}
+        Tech Stack: ${techstack}
+
+        Instructions:
+        1. Return ONLY a JSON array of strings
+        2. Each string should be a complete question
+        3. No special characters like / or *
+        4. Questions should be clear and concise
+        5. Return exactly ${amount} questions
+
+        Example format: ["What is your experience with React?", "Explain component lifecycle"]
+      `;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      text = response.text();
+
+      if (!text) {
+        throw new Error('Empty response from AI');
+      }
+
+      console.log('AI Response received:', text);
+    } catch (error: any) {
+      console.error("AI Generation Error:", {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
       return Response.json(
-        { success: false, error: "Failed to generate questions" },
+        { 
+          success: false, 
+          error: "Failed to generate questions", 
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined 
+        },
         { status: 500 }
       );
     }
