@@ -321,51 +321,57 @@ export const generator = {
     "type": "tool",
     "metadata": {
       "position": {
-        "x": 0,
-        "y": 600
+        "x": -0.5499807678582442,
+        "y": 570.7482497865763
       }
     },
     "tool": {
-      "type": "apiRequest",
-      "function": {
-        "name": "untitled_tool",
-        "parameters": {
-          "type": "object",
-          "properties": {},
-          "required": []
-        }
-      },
       "url": "https://nex-prep-three.vercel.app/api/vapi/generate",
-      "method": "POST",
-      "headers": null,
       "body": {
         "type": "object",
+        "required": [
+          "role",
+          "type",
+          "level",
+          "amount",
+          "techstack"
+        ],
         "properties": {
           "role": {
             "type": "string",
-            "value": "",
+            "value": "{{role}}",
             "description": ""
           },
           "type": {
             "type": "string",
-            "value": "",
+            "value": "{{type}}",
             "description": ""
           },
           "level": {
             "type": "string",
-            "value": "",
+            "value": "{{level}}",
             "description": ""
           },
           "amount": {
-            "type": "string",
-            "value": "",
+            "type": "number",
+            "value": "{{amount}}",
             "description": ""
           },
           "techstack": {
             "type": "string",
-            "description": "",
-            "value": ""
+            "value": "{{techstack}}",
+            "description": ""
           }
+        }
+      },
+      "type": "apiRequest",
+      "method": "POST",
+      "function": {
+        "name": "untitled_tool",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {}
         }
       }
     }
@@ -395,8 +401,8 @@ export const generator = {
     "type": "tool",
     "metadata": {
       "position": {
-        "x": 92,
-        "y": 1100
+        "x": 0.07250899925935528,
+        "y": 1135.5174397048315
       }
     },
     "tool": {
@@ -418,15 +424,7 @@ export const generator = {
     "to": "API Request",
     "condition": {
       "type": "ai",
-      "prompt": "if the user said yes"
-    }
-  },
-  {
-    "from": "API Request",
-    "to": "conversation_1748676505166",
-    "condition": {
-      "type": "ai",
-      "prompt": "if the user said yes"
+      "prompt": ""
     }
   },
   {
@@ -434,7 +432,15 @@ export const generator = {
     "to": "hangup_1748678109640",
     "condition": {
       "type": "ai",
-      "prompt": "if the user said yes"
+      "prompt": ""
+    }
+  },
+  {
+    "from": "API Request",
+    "to": "conversation_1748676505166",
+    "condition": {
+      "type": "ai",
+      "prompt": ""
     }
   }
 ],
