@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       );
     }
     // Generate questions using AI
-    let text;
+    let text: string[];
     try {
       // Debug: Log environment variable
       console.log('API Key available:', !!process.env.GOOGLE_GENERATIVE_AI_API_KEY);
@@ -95,23 +95,19 @@ export async function POST(request: Request) {
       const genAI = new GoogleGenerativeAI(apiKey);
       console.log('AI client initialized');
 
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.0-pro' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
       console.log('Model selected');
 
-      const prompt = `You are a technical interviewer. Create ${amount} interview questions.
-        Role: ${role}
-        Level: ${level}
-        Type: ${normalizedType}
+      const prompt = `Generate ${amount} ${normalizedType} interview questions for a ${level} ${role} position.
         Tech Stack: ${techstack}
 
-        Instructions:
-        1. Return ONLY a JSON array of strings
-        2. Each string should be a complete question
-        3. No special characters like / or *
-        4. Questions should be clear and concise
-        5. Return exactly ${amount} questions
-
-        Example format: ["What is your experience with React?", "Explain component lifecycle"]
+        IMPORTANT: Return ONLY a valid JSON array of strings, nothing else.
+        Format: ["Question 1", "Question 2", ...]
+        Rules:
+        - No special characters
+        - Clear and concise questions
+        - Exactly ${amount} questions
+        - Technical depth appropriate for ${level} level
       `;
 
       console.log('Sending prompt to AI...');
@@ -121,14 +117,52 @@ export async function POST(request: Request) {
       const response = await result.response;
       console.log('Got response from result');
 
-      text = response.text();
+      const responseText = response.text();
+      console.log('Raw response:', responseText);
+      
+      try {
+        // First try to parse the entire response as JSON
+        const parsed = JSON.parse(responseText);
+        if (!Array.isArray(parsed)) {
+          throw new Error('Response is not an array');
+        }
+        text = parsed.map(q => String(q));
+      } catch (e) {
+        console.error('Failed to parse response:', e);
+        throw new Error('Could not parse AI response as JSON array');
+      }
       console.log('Extracted text from response');
 
-      if (!text) {
+      if (!text || text.length === 0) {
         throw new Error('Empty response from AI');
       }
 
-      console.log('AI Response received:', text);
+      // Update interview document with questions array
+      const interview = {
+        role,
+        type: normalizedType,
+        level,
+        techstack: techstack.split(',').map(t => t.trim()),
+        questions: text,  // Now text is string[]
+        userId: userid || null,
+        finalized: true,
+        coverImage: getRandomInterviewCover(),
+        createdAt: new Date().toISOString(),
+      };
+
+      console.log('Saving interview:', interview);
+
+      // Save to Firestore
+      const docRef = await db.collection('interviews').add(interview);
+
+      return Response.json({
+        success: true,
+        data: {
+          id: docRef.id,
+          questions: text,
+          type: normalizedType
+        }
+      }, { status: 200 });
     } catch (error: any) {
       console.error("AI Generation Error:", {
         name: error.name,
