@@ -4,11 +4,30 @@ import { google } from "@ai-sdk/google";
 import { db } from "@/firebase/admin";
 import { getRandomInterviewCover } from "@/lib/utils";
 
+// Optional safe parser
+function safeJsonParse(text: string): string[] {
+  try {
+    // Try direct parse
+    return JSON.parse(text);
+  } catch {
+    // Try to extract array inside string
+    const match = text.match(/\[(.*?)\]/s);
+    if (match) {
+      try {
+        return JSON.parse(`[${match[1]}]`);
+      } catch {
+        throw new Error("Invalid embedded array JSON.");
+      }
+    }
+    throw new Error("No valid JSON array found.");
+  }
+}
+
 export async function POST(request: Request) {
   const { type, role, level, techstack, amount, userid } = await request.json();
 
   try {
-    const { text: questions } = await generateText({
+    const { text } = await generateText({
       model: google("gemini-2.0-flash-001"),
       prompt: `Prepare questions for a job interview.
         The job role is ${role}.
@@ -25,12 +44,25 @@ export async function POST(request: Request) {
     `,
     });
 
+    console.log("Gemini Response:", text);
+
+    let parsedQuestions: string[];
+    try {
+      parsedQuestions = safeJsonParse(text);
+    } catch (err) {
+      console.error("JSON Parse Error:", err);
+      return Response.json(
+          { success: false, error: "Gemini response not valid JSON", rawOutput: text },
+          { status: 500 }
+      );
+    }
+
     const interview = {
-      role: role,
-      type: type,
-      level: level,
-      techstack: techstack.split(","),
-      questions: JSON.parse(questions),
+      role,
+      type,
+      level,
+      techstack: techstack.split(",").map((t) => t.trim()),
+      questions: parsedQuestions,
       userId: userid,
       finalized: true,
       coverImage: getRandomInterviewCover(),
@@ -41,8 +73,8 @@ export async function POST(request: Request) {
 
     return Response.json({ success: true }, { status: 200 });
   } catch (error) {
-    console.error("Error:", error);
-    return Response.json({ success: false, error: error }, { status: 500 });
+    console.error("Outer Error:", error);
+    return Response.json({ success: false, error: String(error) }, { status: 500 });
   }
 }
 
