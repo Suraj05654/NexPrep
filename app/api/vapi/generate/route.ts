@@ -10,7 +10,7 @@ function safeJsonParse(text: string): string[] {
     return JSON.parse(text);
   } catch {
     // Try to extract array inside string
-    const match = text.match(/\[(.*?)\]/s);
+    const match = text.match(/\[(.*?)\]/);
     if (match) {
       try {
         return JSON.parse(`[${match[1]}]`);
@@ -214,7 +214,7 @@ export async function POST(request: Request) {
       );
     }
     // Generate questions using AI
-    let text: string[];
+    let text: string[] = [];
     try {
       // Debug: Log environment variable
       console.log('API Key available:', !!process.env.GOOGLE_GENERATIVE_AI_API_KEY);
@@ -337,11 +337,11 @@ export async function POST(request: Request) {
 
       // Create interview document
       const interview = {
-        userId: userid || null,
+        userId: userid ? userid.trim().toLowerCase() : null,
         role,
         level,
         type: normalizedType,
-        techstack: techstack.split(',').map((t: string) => t.trim()),
+        techstack: techstack.split(',').map((t: string): string => t.trim()),
         questions: text,
         coverImage: `/covers/${getRandomInterviewCover()}`,
         createdAt: new Date().toISOString(),
