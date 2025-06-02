@@ -24,65 +24,145 @@ function safeJsonParse(text: string): string[] {
 }
 
 export async function POST(request: Request) {
-  const { type, role, level, techstack, amount, userid } = await request.json();
-
   try {
-    const { text } = await generateText({
-      model: google("gemini-2.0-flash-001"),
-      prompt: `Prepare questions for a job interview.
-        The job role is ${role}.
-        The job experience level is ${level}.
-        The tech stack used in the job is: ${techstack}.
-        The focus between behavioural and technical questions should lean towards: ${type}.
-        The amount of questions required is: ${amount}.
-        Please return only the questions, without any additional text.
-        The questions are going to be read by a voice assistant so do not use "/" or "*" or any other special characters which might break the voice assistant.
-        Return the questions formatted like this:
-        ["Question 1", "Question 2", "Question 3"]
-        
-        Thank you! <3
-    `,
-    });
-
-    console.log("Gemini Response:", text);
-
-    let parsedQuestions: string[];
+    // Parse and validate request body
+    let body;
     try {
-      parsedQuestions = safeJsonParse(text);
-    } catch (err) {
-      console.error("JSON Parse Error:", err);
+      body = await request.json();
+    } catch {
       return Response.json(
-          { success: false, error: "Gemini response not valid JSON", rawOutput: text },
-          { status: 500 }
-      );
-    }
-
-    // Validate required fields
-    if (!role || !type || !level || !techstack || !parsedQuestions.length) {
-      return Response.json(
-        { success: false, error: "Missing required fields" },
+        { success: false, error: 'Invalid JSON in request body' },
         { status: 400 }
       );
     }
 
+    const { type, role, level, techstack, amount, userid } = body;
+
+    // Validate required fields
+    const requiredFields = { type, role, level, techstack, amount };
+    const missingFields = Object.entries(requiredFields)
+      .filter(([_, value]) => !value && value !== 0)
+      .map(([key]) => key);
+
+    if (missingFields.length > 0) {
+      return Response.json(
+        { 
+          success: false, 
+          error: `Missing required fields: ${missingFields.join(", ")}` 
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate amount
+    if (!Number.isInteger(amount) || amount < 1 || amount > 10) {
+      return Response.json(
+        { 
+          success: false, 
+          error: 'Amount must be an integer between 1 and 10' 
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validate type
+    const normalizedType = type.toLowerCase();
+    if (!['technical', 'behavioral'].includes(normalizedType)) {
+      return Response.json(
+        { 
+          success: false, 
+          error: 'Type must be either "technical" or "behavioral"' 
+        },
+        { status: 400 }
+      );
+    }
+    // Generate questions using AI
+    let text;
+    try {
+      const response = await generateText({
+        model: google("gemini-2.0-flash-001"),
+        prompt: `Prepare ${amount} questions for a ${level} ${role} job interview.
+          Focus on ${normalizedType} questions.
+          Technical stack: ${techstack}.
+          Format: Return ONLY a JSON array of strings containing the questions.
+          Example format: ["Question 1", "Question 2"]
+          Rules:
+          - No special characters like / or *
+          - Questions should be clear and concise
+          - Return exactly ${amount} questions
+        `,
+      });
+      text = response.text;
+    } catch (err) {
+      console.error("AI Generation Error:", err);
+      return Response.json(
+        { success: false, error: "Failed to generate questions" },
+        { status: 500 }
+      );
+    }
+
+    console.log("Gemini Response:", text);
+
+    // Parse AI response
+    let parsedQuestions: string[];
+    try {
+      parsedQuestions = safeJsonParse(text);
+      
+      if (!Array.isArray(parsedQuestions) || parsedQuestions.length === 0) {
+        throw new Error("Invalid response format");
+      }
+    } catch (err) {
+      console.error("JSON Parse Error:", err);
+      return Response.json(
+        { 
+          success: false, 
+          error: "Failed to parse AI response", 
+          rawOutput: text 
+        },
+        { status: 500 }
+      );
+    }
+
+    // Prepare interview document
     const interview = {
       role,
-      type,
+      type: normalizedType,
       level,
       techstack: techstack.split(",").map((t) => t.trim()),
       questions: parsedQuestions,
-      userId: userid || null, // Handle undefined userId
+      userId: userid || null,
       finalized: true,
       coverImage: getRandomInterviewCover(),
       createdAt: new Date().toISOString(),
     };
 
-    await db.collection("interviews").add(interview);
+    // Save to Firestore
+    let docRef;
+    try {
+      docRef = await db.collection("interviews").add(interview);
+    } catch (err) {
+      console.error("Firestore Error:", err);
+      return Response.json(
+        { success: false, error: "Failed to save interview" },
+        { status: 500 }
+      );
+    }
 
-    return Response.json({ success: true }, { status: 200 });
+    // Return success response
+    return Response.json({
+      success: true,
+      data: {
+        id: docRef.id,
+        questions: parsedQuestions,
+        type: normalizedType
+      }
+    }, { status: 200 });
   } catch (error) {
-    console.error("Outer Error:", error);
-    return Response.json({ success: false, error: String(error) }, { status: 500 });
+    console.error("Unexpected Error:", error);
+    return Response.json(
+      { success: false, error: "An unexpected error occurred" },
+      { status: 500 }
+    );
   }
 }
 
