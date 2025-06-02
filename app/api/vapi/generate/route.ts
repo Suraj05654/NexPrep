@@ -95,7 +95,7 @@ export async function POST(request: Request) {
       const genAI = new GoogleGenerativeAI(apiKey);
       console.log('AI client initialized');
 
-      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.0-pro' });
       console.log('Model selected');
 
       const prompt = `You are a technical interviewer. Create ${amount} interview questions.
