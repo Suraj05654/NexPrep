@@ -98,16 +98,21 @@ export async function POST(request: Request) {
       const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
       console.log('Model selected');
 
-      const prompt = `Generate ${amount} ${normalizedType} interview questions for a ${level} ${role} position.
+      const prompt = `You are a JSON generator that creates interview questions.
+        Task: Generate exactly ${amount} ${normalizedType} interview questions for a ${level} ${role} position.
         Tech Stack: ${techstack}
 
-        IMPORTANT: Return ONLY a valid JSON array of strings, nothing else.
-        Format: ["Question 1", "Question 2", ...]
-        Rules:
-        - No special characters
-        - Clear and concise questions
-        - Exactly ${amount} questions
-        - Technical depth appropriate for ${level} level
+        OUTPUT RULES:
+        1. Return ONLY a JSON array of strings
+        2. No explanation, no other text
+        3. Each question should be clear and concise
+        4. Questions should match ${level} level
+        5. No special characters like * or /
+
+        Example output format:
+        ["What is your experience with React?", "Explain how useEffect works"]
+
+        Remember: Output ONLY the JSON array, nothing else.
       `;
 
       console.log('Sending prompt to AI...');
@@ -121,14 +126,31 @@ export async function POST(request: Request) {
       console.log('Raw response:', responseText);
       
       try {
-        // First try to parse the entire response as JSON
-        const parsed = JSON.parse(responseText);
+        // Try to clean up the response text
+        let cleanText = responseText.trim();
+        
+        // If response starts with ``` or ends with ```, remove them
+        cleanText = cleanText.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+        
+        console.log('Cleaned text:', cleanText);
+        
+        // Try to parse as JSON
+        const parsed = JSON.parse(cleanText);
+        console.log('Parsed result:', parsed);
+        
         if (!Array.isArray(parsed)) {
           throw new Error('Response is not an array');
         }
+        
+        if (parsed.length !== amount) {
+          throw new Error(`Expected ${amount} questions but got ${parsed.length}`);
+        }
+        
         text = parsed.map(q => String(q));
+        console.log('Final questions:', text);
       } catch (e) {
         console.error('Failed to parse response:', e);
+        console.error('Response text was:', responseText);
         throw new Error('Could not parse AI response as JSON array');
       }
       console.log('Extracted text from response');
