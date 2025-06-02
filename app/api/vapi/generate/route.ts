@@ -57,13 +57,21 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate required fields
+    if (!role || !type || !level || !techstack || !parsedQuestions.length) {
+      return Response.json(
+        { success: false, error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
     const interview = {
       role,
       type,
       level,
       techstack: techstack.split(",").map((t) => t.trim()),
       questions: parsedQuestions,
-      userId: userid,
+      userId: userid || null, // Handle undefined userId
       finalized: true,
       coverImage: getRandomInterviewCover(),
       createdAt: new Date().toISOString(),
