@@ -23,56 +23,194 @@ function safeJsonParse(text: string): string[] {
 }
 
 export async function POST(request: Request) {
+  // Handle CORS preflight
+  if (request.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      }
+    });
+  }
+
+  console.log('Received request:', {
+    method: request.method,
+    url: request.url,
+    headers: Object.fromEntries(request.headers.entries())
+  });
+
   try {
     // Parse and validate request body
     let body;
     try {
       body = await request.json();
-    } catch {
-      return Response.json(
-        { success: false, error: 'Invalid JSON in request body' },
-        { status: 400 }
+      console.log('Request body:', body);
+    } catch (e) {
+      console.error('Failed to parse request body:', e);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Invalid JSON in request body',
+          details: e instanceof Error ? e.message : 'Unknown error',
+          name: e instanceof Error ? e.name : 'Error'
+        }),
+        { 
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        }
       );
     }
 
     const { type, role, level, techstack, amount, userid } = body;
 
+    console.log('Extracted fields:', { type, role, level, techstack, amount, userid });
+
     // Validate required fields
     const requiredFields = { type, role, level, techstack, amount };
-    const missingFields = Object.entries(requiredFields)
-      .filter(([_, value]) => !value && value !== 0)
-      .map(([key]) => key);
+    const fieldValidation = Object.entries(requiredFields).map(([key, value]) => ({
+      field: key,
+      value: value,
+      valid: value !== undefined && value !== null && value !== '',
+      type: typeof value
+    }));
+
+    console.log('Field validation:', fieldValidation);
+
+    const missingFields = fieldValidation
+      .filter(field => !field.valid)
+      .map(field => field.field);
 
     if (missingFields.length > 0) {
-      return Response.json(
-        { 
+      const error = {
+        success: false,
+        error: `Missing required fields: ${missingFields.join(", ")}`,
+        validation: fieldValidation
+      };
+      console.error('Validation failed:', error);
+      return new Response(
+        JSON.stringify({ 
           success: false, 
           error: `Missing required fields: ${missingFields.join(", ")}` 
-        },
-        { status: 400 }
+        }),
+        { 
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        }
       );
     }
 
     // Validate amount
-    if (!Number.isInteger(amount) || amount < 1 || amount > 10) {
-      return Response.json(
-        { 
+    console.log('Validating amount:', { amount, type: typeof amount });
+    
+    if (typeof amount === 'string') {
+      try {
+        body.amount = parseInt(amount, 10);
+        console.log('Converted amount string to number:', body.amount);
+      } catch (e) {
+        console.error('Failed to parse amount:', e);
+      }
+    }
+
+    if (!Number.isInteger(body.amount) || body.amount < 1 || body.amount > 10) {
+      const error = {
+        success: false,
+        error: 'Amount must be an integer between 1 and 10',
+        details: {
+          received: amount,
+          type: typeof amount,
+          isInteger: Number.isInteger(amount),
+          value: body.amount
+        }
+      };
+      console.error('Amount validation failed:', error);
+      return new Response(
+        JSON.stringify({ 
           success: false, 
-          error: 'Amount must be an integer between 1 and 10' 
-        },
-        { status: 400 }
+          error: 'Amount must be an integer between 1 and 10',
+          details: error.details
+        }),
+        { 
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        }
       );
     }
 
     // Validate type
+    console.log('Validating type:', { type, normalized: type?.toLowerCase() });
+    
+    if (typeof type !== 'string') {
+      const error = {
+        success: false,
+        error: 'Type must be a string',
+        details: {
+          received: type,
+          type: typeof type
+        }
+      };
+      console.error('Type validation failed:', error);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Type must be a string',
+          details: error.details
+        }),
+        { 
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        }
+      );
+    }
+
     const normalizedType = type.toLowerCase();
     if (!['technical', 'behavioral'].includes(normalizedType)) {
-      return Response.json(
-        { 
+      const error = {
+        success: false,
+        error: 'Type must be either "technical" or "behavioral"',
+        details: {
+          received: type,
+          normalized: normalizedType,
+          allowedValues: ['technical', 'behavioral']
+        }
+      };
+      console.error('Type validation failed:', error);
+      return new Response(
+        JSON.stringify({ 
           success: false, 
-          error: 'Type must be either "technical" or "behavioral"' 
-        },
-        { status: 400 }
+          error: 'Type must be either "technical" or "behavioral"',
+          details: error.details
+        }),
+        { 
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        }
       );
     }
     // Generate questions using AI
@@ -115,15 +253,53 @@ export async function POST(request: Request) {
         Remember: Output ONLY the JSON array, nothing else.
       `;
 
-      console.log('Sending prompt to AI...');
-      const result = await model.generateContent(prompt);
-      console.log('Got result from AI');
+      // Retry configuration
+      const maxRetries = 3;
+      const baseDelay = 1000; // 1 second
+      let lastError;
+      let responseText: string | undefined;
 
-      const response = await result.response;
-      console.log('Got response from result');
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`Attempt ${attempt}/${maxRetries}: Sending prompt to AI...`);
+          const result = await model.generateContent(prompt);
+          console.log('Got result from AI');
 
-      const responseText = response.text();
-      console.log('Raw response:', responseText);
+          const response = await result.response;
+          console.log('Got response from result');
+          
+          // Get the response text
+          responseText = response.text();
+          console.log('Raw response:', responseText);
+          
+          // If we get here, the request was successful
+          lastError = null;
+          break;
+        } catch (error: any) {
+          lastError = error;
+          
+          // Check if it's a 503 error
+          if (error?.message?.includes('503 Service Unavailable')) {
+            if (attempt < maxRetries) {
+              const delay = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
+              console.log(`503 error, retrying in ${delay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+          }
+          // If it's not a 503 error or we're out of retries, throw the error
+          throw error;
+        }
+      }
+
+      // If we exhausted all retries, throw the last error
+      if (lastError) {
+        throw lastError;
+      }
+
+      if (!responseText) {
+        throw new Error('No response received from AI');
+      }
       
       try {
         // Try to clean up the response text
@@ -159,17 +335,17 @@ export async function POST(request: Request) {
         throw new Error('Empty response from AI');
       }
 
-      // Update interview document with questions array
+      // Create interview document
       const interview = {
-        role,
-        type: normalizedType,
-        level,
-        techstack: techstack.split(',').map(t => t.trim()),
-        questions: text,  // Now text is string[]
         userId: userid || null,
-        finalized: true,
-        coverImage: getRandomInterviewCover(),
+        role,
+        level,
+        type: normalizedType,
+        techstack: techstack.split(',').map((t: string) => t.trim()),
+        questions: text,
+        coverImage: `/covers/${getRandomInterviewCover()}`,
         createdAt: new Date().toISOString(),
+        finalized: true
       };
 
       console.log('Saving interview:', interview);
@@ -177,14 +353,23 @@ export async function POST(request: Request) {
       // Save to Firestore
       const docRef = await db.collection('interviews').add(interview);
 
-      return Response.json({
-        success: true,
-        data: {
+      return new Response(
+        JSON.stringify({ 
+          success: true,
           id: docRef.id,
           questions: text,
           type: normalizedType
+        }),
+        { 
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
         }
-      }, { status: 200 });
+      );
     } catch (error: any) {
       console.error("AI Generation Error:", {
         name: error.name,
@@ -195,15 +380,23 @@ export async function POST(request: Request) {
         details: error.details,
         response: error.response,
       });
-      return Response.json(
-        { 
+      return new Response(
+        JSON.stringify({ 
           success: false, 
           error: "Failed to generate questions", 
           details: error.message,  // Always show error message for debugging
           code: error.code,
           name: error.name
-        },
-        { status: 500 }
+        }),
+        { 
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        }
       );
     }
 
@@ -219,13 +412,21 @@ export async function POST(request: Request) {
       }
     } catch (err) {
       console.error("JSON Parse Error:", err);
-      return Response.json(
-        { 
+      return new Response(
+        JSON.stringify({ 
           success: false, 
           error: "Failed to parse AI response", 
           rawOutput: text 
-        },
-        { status: 500 }
+        }),
+        { 
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        }
       );
     }
 
@@ -248,30 +449,68 @@ export async function POST(request: Request) {
       docRef = await db.collection("interviews").add(interview);
     } catch (err) {
       console.error("Firestore Error:", err);
-      return Response.json(
-        { success: false, error: "Failed to save interview" },
-        { status: 500 }
+      return new Response(
+        JSON.stringify({ success: false, error: "Failed to save interview" }),
+        { 
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          }
+        }
       );
     }
 
     // Return success response
-    return Response.json({
-      success: true,
-      data: {
-        id: docRef.id,
-        questions: parsedQuestions,
-        type: normalizedType
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          id: docRef.id,
+          questions: parsedQuestions,
+          type: normalizedType
+        }
+      }),
+      { 
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        }
       }
-    }, { status: 200 });
+    );
   } catch (error) {
     console.error("Unexpected Error:", error);
-    return Response.json(
-      { success: false, error: "An unexpected error occurred" },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({ success: false, error: "An unexpected error occurred" }),
+      { 
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type'
+        }
+      }
     );
   }
 }
 
 export async function GET() {
-  return Response.json({ success: true, data: "Thank you!" }, { status: 200 });
+  return new Response(
+    JSON.stringify({ success: true, data: "Thank you!" }),
+    { 
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      }
+    }
+  );
 }
